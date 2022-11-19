@@ -1,0 +1,3 @@
+C:/Users/Kamil/Desktop/Server_2_v3/cmake-build-debug/CMakeFiles/Server_2.dir
+C:/Users/Kamil/Desktop/Server_2_v3/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/Kamil/Desktop/Server_2_v3/cmake-build-debug/CMakeFiles/rebuild_cache.dir
