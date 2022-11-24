@@ -54,7 +54,7 @@ struct shared_memory_names
     struct shared_memory_slot slots[4];// Number of players
 };
 
-
+/*
 void print_window(char **tab, int number_of_cols, int number_of_rows)
 {
     int x=5,y=5;
@@ -102,7 +102,7 @@ void print_window(char **tab, int number_of_cols, int number_of_rows)
         }
     }
 }
-
+*/
 
 
 void add_object(char **tab,enum options option)
@@ -143,10 +143,18 @@ void load_map( char **map,  int number_of_cols, int number_of_rows)
     {
         char ch;
         int x= fscanf(ptr,"%c",&ch);
-        if(x!=1) return;
+        if(x!=1)
+        {
+            fclose(ptr);
+            return;
+        }
         if(ch!='\n' && ch!='\0')
         {
-            if(r==number_of_rows) return;
+            if(r==number_of_rows)
+            {
+                fclose(ptr);
+                return;
+            }
             map[r][c] = ch;
             c++;
             if(c==number_of_cols)
@@ -157,6 +165,7 @@ void load_map( char **map,  int number_of_cols, int number_of_rows)
 
         }
     }
+    fclose(ptr);
 }
 void map_copy(char **map_dest, char **map_src,int width, int height )
 {
@@ -396,6 +405,8 @@ void add_beast_to_buffer(struct beast_buffer *beasts, char **map)
 {
     if(beasts==NULL || map==NULL) return;
 
+
+    // Todo poprawic to xD
     int x=7,y=1;
     /*
     while (map[y][x]!=' ')
@@ -546,28 +557,48 @@ int main()
     shm_names[2] = "player3";
     shm_names[3] = "player4";
 
-
-
-
-    int shm_all_process = shm_open("players_list", O_CREAT | O_EXCL | O_RDWR,0777);
-
+    // new named sem
     sem_t *sem = sem_open("my_sem", O_CREAT | O_EXCL, 0777,1 );
+    if(sem == SEM_FAILED)
+    {
+        printf("Failed to open sem\n");
+        return -1;
+    }
 
-    if(shm_all_process==-1)
+    sem_wait(sem);
+    int shm_all_process = shm_open("players_list", O_CREAT | O_EXCL | O_RDWR,0777);
+    sem_post(sem);
+    if(shm_all_process == -1 )
     {
         printf("Failed to open shared memory\n");
         shm_unlink("players_list");
-        return -1;
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -2;
     }
+
     if(ftruncate(shm_all_process, sizeof(struct shared_memory_names))!=0) // przypisanie pamięci
     {
         printf("truncate failed\n");
+        close(shm_all_process);
         shm_unlink("players_list");
-        return -2;
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -3;
     }
+
     sem_wait(sem);
     struct shared_memory_names *names =mmap(NULL, sizeof(struct shared_memory_names), PROT_READ | PROT_WRITE, MAP_SHARED,shm_all_process,0);
-
+    if(names == MAP_FAILED)
+    {
+        sem_post(sem);
+        printf("Map failed");
+        close(shm_all_process);
+        shm_unlink("players_list");
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -4;
+    }
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
         names[i].slots->status = NotConnected;
@@ -576,55 +607,101 @@ int main()
     }
     sem_post(sem);
 
-    // new named samaphore
-    //todo check if correct
 
-
-
-
-
-    // Todo now we make shm for each player + sem
-
-    sem_wait(sem);
 
     int shm_player[PLAYERS_LIMIT_TOTAL];
     struct player *players[PLAYERS_LIMIT_TOTAL];
 
+    sem_wait(sem);
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
         shm_player[i] = shm_open(shm_names[i], O_CREAT | O_EXCL | O_RDWR,0777);
         // todo check if fail
-    }
-
-    for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
-    {
-        //todo zwalnianie zasobow
-        if(ftruncate(shm_player[i], sizeof(struct player))!=0) // przypisanie pamięci
+        if(shm_player[i] == -1)
         {
-            printf("truncate struct player failed \n");
+            printf("Failed to create players shared memory\n");
+            for (int j = 0; j < i; ++j) {
+                close(shm_player[j]);
+                shm_unlink(shm_names[j]);
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_all_process);
             shm_unlink("players_list");
-            return -2;
+            sem_close(sem);
+            sem_unlink("my_sem");
+            return -5;
         }
     }
-
+    for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
+    {
+        if(ftruncate(shm_player[i], sizeof(struct player))!=0) // przypisanie pamięci
+        {
+            printf("truncate struct players failed \n");
+            for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+                    close(shm_player[j]);
+                    shm_unlink(shm_names[j]);
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_all_process);
+            shm_unlink("players_list");
+            sem_close(sem);
+            sem_unlink("my_sem");
+            return -6;
+        }
+    }
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
          players[i] =mmap(NULL, sizeof(struct player), PROT_READ | PROT_WRITE, MAP_SHARED,shm_player[i],0);
-         //todo check if fail
+         if(players[i] == MAP_FAILED)
+         {
+             printf("mmpa players failed\n");
+             for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+                 close(shm_player[j]);
+                 shm_unlink(shm_names[j]);
+                 if(j<i)
+                     munmap(players[j],sizeof(struct player));
+             }
+             munmap(names,sizeof(struct shared_memory_names));
+             close(shm_all_process);
+             shm_unlink("players_list");
+             sem_close(sem);
+             sem_unlink("my_sem");
+             return -7;
+         }
     }
     sem_post(sem);
 
-    // todo make 4 sems
 
+
+
+    // todo make 4 sems for players - unused
+    // if used check if sems are closed and unlinked
+    // by default psems are free and unlkend so we must delete it when we decide to delete next line
     sem_t *psems[PLAYERS_LIMIT_TOTAL];
 
-    //todo check if correct
     for (int i = 0; i < PLAYERS_LIMIT_TOTAL; ++i) {
         psems[i]=  sem_open(sem_names[i], O_CREAT | O_EXCL, 0777,1 );
+        if(psems[i] == SEM_FAILED)
+        {
+            printf("open sems for players failed\n");
+            for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+                close(shm_player[j]);
+                shm_unlink(shm_names[j]);
+                munmap(players[j],sizeof(struct player));
+                if(j<i)
+                {
+                    sem_close(psems[j]);
+                    sem_unlink(sem_names[j]);
+                }
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_all_process);
+            shm_unlink("players_list");
+            sem_close(sem);
+            sem_unlink("my_sem");
+            return -8;
+        }
     }
-    ///
-
-
 
 
     char **map_base;
@@ -632,12 +709,91 @@ int main()
 
     //todo free memory
     struct buffer *death_points = create_buffer(25);
-    struct beast_buffer *beasts = create_beast_buffer(25);
+    if(death_points == NULL)
+    {
+        printf("create death_points failed\n");
+        for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+            close(shm_player[j]);
+            shm_unlink(shm_names[j]);
+            munmap(players[j],sizeof(struct player));
+            sem_close(psems[j]);
+            sem_unlink(sem_names[j]);
 
+        }
+        munmap(names,sizeof(struct shared_memory_names));
+        close(shm_all_process);
+        shm_unlink("players_list");
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -9;
+    }
+
+    struct beast_buffer *beasts = create_beast_buffer(25);
+    if(beasts == NULL)
+    {
+
+        printf("create beasts_buffer failed\n");
+        free_buffer(&death_points);
+        for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+            close(shm_player[j]);
+            shm_unlink(shm_names[j]);
+            munmap(players[j],sizeof(struct player));
+            sem_close(psems[j]);
+            sem_unlink(sem_names[j]);
+
+        }
+        munmap(names,sizeof(struct shared_memory_names));
+        close(shm_all_process);
+        shm_unlink("players_list");
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -10;
+    }
     //game init
+
     sem_wait(sem);
-    create_array_2d_2(&map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS);// create map
-    create_array_2d_2(&map_interactive, NUMBER_OF_COLS,NUMBER_OF_ROWS);
+    if(create_array_2d_2(&map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS)!=0)
+    {
+        printf("create map failed\n");
+        free_beast_buffer(&beasts);
+        free_buffer(&death_points);
+        for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+            close(shm_player[j]);
+            shm_unlink(shm_names[j]);
+            munmap(players[j],sizeof(struct player));
+            sem_close(psems[j]);
+            sem_unlink(sem_names[j]);
+
+        }
+        munmap(names,sizeof(struct shared_memory_names));
+        close(shm_all_process);
+        shm_unlink("players_list");
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -11;
+    }// create map
+
+    if(create_array_2d_2(&map_interactive, NUMBER_OF_COLS,NUMBER_OF_ROWS)!=0)
+    {
+        printf("create map failed\n");
+        destroy_array_2d(&map_base,NUMBER_OF_ROWS);
+        free_beast_buffer(&beasts);
+        free_buffer(&death_points);
+        for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+            close(shm_player[j]);
+            shm_unlink(shm_names[j]);
+            munmap(players[j],sizeof(struct player));
+            sem_close(psems[j]);
+            sem_unlink(sem_names[j]);
+
+        }
+        munmap(names,sizeof(struct shared_memory_names));
+        close(shm_all_process);
+        shm_unlink("players_list");
+        sem_close(sem);
+        sem_unlink("my_sem");
+        return -12;
+    }
 
     load_map(map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS);          // load map
     load_map(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
@@ -647,9 +803,9 @@ int main()
     sem_post(sem);
 
 
-    //todo print map
-    // display_array_2d(map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS);
-    initscr();
+
+ // todo init screen
+   // initscr();
     int counter = 10;
     int Number_of_players = 0;
 
@@ -712,6 +868,7 @@ int main()
                         map_interactive[y][x] ='4';
                         break;
                     }
+                    default: break;
                 }
             }
 
@@ -720,31 +877,34 @@ int main()
         for(int i=0; i<1; i++)
             update_beast_map(beasts->array[i],map_interactive);
 
-        print_window(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
-        refresh();
+       // print_window(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
+       // refresh();
 
 
         counter--;
         sleep(1);
     }
-    endwin();
-    //detach from shared memory
-    shmdt(names);
+   // endwin();
+
+
+
+
+    destroy_array_2d(&map_interactive, NUMBER_OF_ROWS);
+    destroy_array_2d(&map_base,NUMBER_OF_ROWS);
+    free_beast_buffer(&beasts);
+    free_buffer(&death_points);
+    for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+        close(shm_player[j]);
+        shm_unlink(shm_names[j]);
+        munmap(players[j],sizeof(struct player));
+        sem_close(psems[j]);
+        sem_unlink(sem_names[j]);
+    }
+    munmap(names,sizeof(struct shared_memory_names));
+    close(shm_all_process);
     shm_unlink("players_list");
     sem_close(sem);
     sem_unlink("my_sem");
-    destroy_array_2d(&map_base,NUMBER_OF_ROWS);
-    destroy_array_2d(&map_interactive,NUMBER_OF_ROWS);
-
-    for (int i = 0; i <PLAYERS_LIMIT_TOTAL ; ++i) {
-
-        sem_close(psems[i]);
-        sem_unlink(sem_names[i]);
-        shmdt(players[i]);
-        shm_unlink(shm_names[i]);
-    }
-
-
     return 0;
 
 }
