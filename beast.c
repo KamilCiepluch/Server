@@ -93,14 +93,14 @@ struct beast *find_beast(struct beast_buffer *buffer,int x, int y )
 }
 void add_beast(struct beast_buffer *buffer, int x, int y)
 {
-    if( buffer->next_to_update == buffer->size) return;
-    int index = buffer->next_to_update;
+    if( buffer->current_size == buffer->size) return;
+    int index = buffer->current_size;
 
     struct beast *ptr = find_beast(buffer,x,y);
     if(ptr!=NULL)
         return;
 
     buffer->array[index] = create_beast(x,y);
-    buffer->next_to_update++;
+    buffer->current_size++;
 
 }

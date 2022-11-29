@@ -6,6 +6,7 @@
 #define SERVER_2_BEAST_H
 #include <stdio.h>
 #include <stdlib.h>
+#include "game_enums.h"
 enum beast_move_options{RANDOM, CHASE_PLAYER};
 
 struct beast
@@ -14,12 +15,14 @@ struct beast
     int y;
     enum beast_move_options moveOption;
     char map[5][5];
+    enum effect effect;
+    int beast_moved;
 };
 struct beast_buffer
 {
     struct beast **array;
     int size;
-    int next_to_update;
+    int current_size;
 };
 struct beast_buffer *create_beast_buffer(int size);
 void free_beast_buffer(struct beast_buffer **ptr);

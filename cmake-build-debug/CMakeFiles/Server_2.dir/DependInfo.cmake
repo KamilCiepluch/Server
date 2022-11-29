@@ -8,10 +8,10 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_C
-  "C:/Users/Kamil/Desktop/Server/beast.c" "C:/Users/Kamil/Desktop/Server/cmake-build-debug/CMakeFiles/Server_2.dir/beast.c.obj"
-  "C:/Users/Kamil/Desktop/Server/buffer.c" "C:/Users/Kamil/Desktop/Server/cmake-build-debug/CMakeFiles/Server_2.dir/buffer.c.obj"
-  "C:/Users/Kamil/Desktop/Server/create_array.c" "C:/Users/Kamil/Desktop/Server/cmake-build-debug/CMakeFiles/Server_2.dir/create_array.c.obj"
-  "C:/Users/Kamil/Desktop/Server/main.c" "C:/Users/Kamil/Desktop/Server/cmake-build-debug/CMakeFiles/Server_2.dir/main.c.obj"
+  "C:/Users/Kamil/Desktop/Server_git/beast.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/beast.c.obj"
+  "C:/Users/Kamil/Desktop/Server_git/buffer.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/buffer.c.obj"
+  "C:/Users/Kamil/Desktop/Server_git/create_array.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/create_array.c.obj"
+  "C:/Users/Kamil/Desktop/Server_git/main.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/main.c.obj"
   )
 set(CMAKE_C_COMPILER_ID "GNU")
 

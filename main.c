@@ -1,6 +1,5 @@
 #include "create_array.h"
 #include <sys/ipc.h>
-#include <sys/shm.h>
 #include <stdio.h>
 #include <unistd.h>
 #include  <stdlib.h>
@@ -10,51 +9,20 @@
 #include <semaphore.h>
 #include <fcntl.h>           /* For O_* constants */
 #include <ncurses.h>
-#include <math.h>
 #include "buffer.h"
 #include "beast.h"
+#include "game_enums.h"
+#include "game_logic.h"
+#define MAX_NUMBER_OF_BEASTS 25
+#define MAX_NUMBER_OF_DEATH_POINTS 25
+
 int PLAYERS_LIMIT_TOTAL = 4;
-int NUMBER_OF_COLS= 51;
-int NUMBER_OF_ROWS=25;
+int Current_Number_of_beasts  = 5;
 
 
 
-enum ConnectionStatus
-{
-    NotConnected,Connected
-};
-enum effect {SlowDown, Neutral,CanNotBeSlowDown};
-enum options {COIN=1,TREASURE=10,LARGE_TREASURE=50};
-enum MoveOptions {UP=0,DOWN=1,RIGHT=2,LEFT=3, STAY=4};
-struct coordinates
-{
-    int x;
-    int y;
-};
-struct player
-{
-    struct coordinates coordinates;
-    pid_t PID;
-    int deaths;
-    int carried_coins;
-    int brought_coins;
-    int playerID;
-    enum effect effect;
-    enum ConnectionStatus connectionStatus;
-    char map[5][5];
-};
-struct shared_memory_slot
-{
-    char player_name[20];
-    char sem_name[20];
-    enum ConnectionStatus status;
-};
-struct shared_memory_names
-{
-    struct shared_memory_slot slots[4];// Number of players
-};
 
-/*
+
 void print_window(char **tab, int number_of_cols, int number_of_rows)
 {
     int x=5,y=5;
@@ -74,24 +42,28 @@ void print_window(char **tab, int number_of_cols, int number_of_rows)
                 attron(COLOR_PAIR(1));
                 mvprintw(x+i,y+j,"%c",tab[i][j]);
                 attroff(COLOR_PAIR(1));
+
             }
             else if(tab[i][j] == 'c' || tab[i][j] == 't' || tab[i][j] == 'T' || tab[i][j] == 'D')
             {
                 attron(COLOR_PAIR(2));
                 mvprintw(x+i,y+j,"%c",tab[i][j]);
                 attroff(COLOR_PAIR(2));
+
             }
             else if(tab[i][j] == 'A' )
             {
                 attron(COLOR_PAIR(3));
                 mvprintw(x+i,y+j,"%c",tab[i][j]);
                 attroff(COLOR_PAIR(3));
+
             }
             else if(tab[i][j] >= '1' && tab[i][j] <= '9')
             {
                 attron(COLOR_PAIR(4));
                 mvprintw(x+i,y+j,"%c",tab[i][j]);
                 attroff(COLOR_PAIR(4));
+
             }
             else
             {
@@ -101,461 +73,235 @@ void print_window(char **tab, int number_of_cols, int number_of_rows)
             }
         }
     }
+
+
+
+
+
 }
-*/
-
-
-void add_object(char **tab,enum options option)
+void print_player_info(struct player *player, int x, int y)
 {
-    int x=0,y=0;
-    while (tab[y][x]!=' ')
+
+    start_color();
+    init_pair(6,COLOR_BLACK,COLOR_WHITE);
+    attron(COLOR_PAIR(6));
+    if(player->connectionStatus == Connected)
     {
-        x=rand() % (NUMBER_OF_COLS-1) + 1;
-        y=rand() % (NUMBER_OF_ROWS-1) + 1;
+
+        mvprintw(y+1,x,"%d",player->PID);
+        mvprintw(y+2,x,"%s",player->player_type);
+        mvprintw(y+3,x,"%02d/%02d",player->coordinates.x,player->coordinates.y);
+        mvprintw(y+4,x,"%d",player->deaths);
+
+        mvprintw(y+8,x,"%d",player->carried_coins);
+        mvprintw(y+9,x,"%d",player->brought_coins);
     }
-    char object;
-    switch (option) {
-        case COIN: {
-            object='c';
-            break;
-        }
-        case TREASURE:
-        {
-            object='t';
-            break;
-        }
-        case LARGE_TREASURE:
-        {
-            object='T';
-            break;
-        }
-        default: object=' ';
+    else
+    {
+        mvprintw(y+1,x,"-");
+        mvprintw(y+2,x,"-");
+        mvprintw(y+3,x,"--/--");
+        mvprintw(y+4,x,"-");
     }
-    tab[y][x] = object;
+    attroff(COLOR_PAIR(6));
 }
-void load_map( char **map,  int number_of_cols, int number_of_rows)
+void print_players_info(struct player **players, int number_of_players, int start_x, int start_y)
 {
-    FILE *ptr=fopen("map.txt", "r");
-    if(ptr==NULL) return;
-    int r=0,c=0;
-
-    while (!feof(ptr))
+    int x = 0;
+    start_color();
+    attron(COLOR_PAIR(8));
+    char number = '1';
+    for(int i=0; i<number_of_players; i++)
     {
-        char ch;
-        int x= fscanf(ptr,"%c",&ch);
-        if(x!=1)
+        if(players[i]->connectionStatus == Connected)
         {
-            fclose(ptr);
-            return;
+            mvprintw(start_y,start_x+x, "%s%c", "Player",number);
+            print_player_info(players[i],start_x +x , start_y);
         }
-        if(ch!='\n' && ch!='\0')
+        x += 10;
+        number++;
+    }
+    attroff(COLOR_PAIR(8));
+}
+void print_server_info(pid_t PID, struct coordinates camp,int start_x, int start_y)
+{
+    start_color();
+    init_pair(8,COLOR_BLACK,COLOR_WHITE);
+    attron(COLOR_PAIR(8));
+    for(int i=0; i<2; i++)
+    {
+        for(int j=-2; j<50; j++)
         {
-            if(r==number_of_rows)
+            mvprintw(start_y+1+i,start_x+1+j," ");
+        }
+    }
+    mvprintw(start_y+1,start_x+1,"Server's PID: %d", PID);
+    mvprintw(start_y+2,start_x+2,"Campsite X/Y: %02d/%02d", camp.x, camp.y );
+    attroff(COLOR_PAIR(8));
+}
+void print_stats(struct player **players, int number_of_players, unsigned long long round, int start_x, int start_y)
+{
+    start_color();
+    init_pair(8,COLOR_BLACK,COLOR_WHITE);
+    attron(COLOR_PAIR(8));
+    for(int i=0; i<23; i++)
+    {
+        for(int j=-2; j<50; j++)
+        {
+            mvprintw(start_y+3+i,start_x+1+j," ");
+        }
+    }
+
+
+    mvprintw(start_y+3,start_x+2,"Round number: %llu",round );
+
+
+    mvprintw(start_y+6,start_x+1,"Parameter:");
+    mvprintw(start_y+7,start_x+2,"PID");
+    mvprintw(start_y+8,start_x+2,"Type");
+    mvprintw(start_y+9,start_x+2,"CURR X/Y");
+    mvprintw(start_y+10,start_x+2,"Deaths");
+
+    mvprintw(start_y+13,start_x+1,"Coins");
+    mvprintw(start_y+14,start_x+5,"carried");
+    mvprintw(start_y+15,start_x+5,"brought");
+
+
+
+
+    mvprintw(start_y+18,start_x+1,"Legend:");
+    mvprintw(start_y+19,start_x+7,"- players");
+    mvprintw(start_y+20,start_x+7,"- wall");
+    mvprintw(start_y+21,start_x+7,"- bushes (slow down)");
+    mvprintw(start_y+22,start_x+7,"- enemy");
+    mvprintw(start_y+23,start_x+7,"- one coin");
+    mvprintw(start_y+23,start_x+31,"- dropped treasure");
+    mvprintw(start_y+24,start_x+7,"- treasure (10 coin)");
+    mvprintw(start_y+25,start_x+7,"- large treasure (50 coin)");
+    mvprintw(start_y+22,start_x+31,"- campsite ");
+    attroff(COLOR_PAIR(8));
+
+    init_pair(9,COLOR_WHITE,COLOR_MAGENTA);
+    attron(COLOR_PAIR(9));
+    mvprintw(start_y+19,start_x+2,"1234");
+    attroff(COLOR_PAIR(9));
+
+    init_pair(10,COLOR_BLACK,COLOR_BLACK);
+    attron(COLOR_PAIR(10));
+    mvprintw(start_y+20,start_x+2,"|");
+    attroff(COLOR_PAIR(10));
+
+    init_pair(11,COLOR_BLACK,COLOR_WHITE);
+    attron(COLOR_PAIR(11));
+    mvprintw(start_y+21,start_x+2,"#");
+    mvprintw(start_y+22,start_x+2,"*");
+    attroff(COLOR_PAIR(11));
+
+    init_pair(12,COLOR_BLACK,COLOR_YELLOW);
+    attron(COLOR_PAIR(12));
+    mvprintw(start_y+23,start_x+2,"c");
+    mvprintw(start_y+24,start_x+2,"t");
+    mvprintw(start_y+25,start_x+2,"T");
+    mvprintw(start_y+23,start_x+29, "D");
+    attroff(COLOR_PAIR(12));
+
+    init_pair(13,COLOR_YELLOW,COLOR_GREEN);
+    attron(COLOR_PAIR(13));
+    mvprintw(start_y+22,start_x+29,"A");
+    attroff(COLOR_PAIR(13));
+    print_players_info(players,number_of_players,start_x+14,start_y+6);
+}
+void *keyborad_listener(void *arg)
+{
+    enum keyboard_option *selected_option = (enum keyboard_option *) arg;
+    while (1)
+    {
+        int option = getch();
+        if(*selected_option==DO_NOTHING)
+        {
+            if(option == 'q')
             {
-                fclose(ptr);
-                return;
+                *selected_option = QUIT_GAME;
+                break;
             }
-            map[r][c] = ch;
-            c++;
-            if(c==number_of_cols)
-            {
-                c=0;
-                r++;
-            }
-
-        }
-    }
-    fclose(ptr);
-}
-void map_copy(char **map_dest, char **map_src,int width, int height )
-{
-    if(map_src==NULL || map_dest==NULL) return;
-    if(width<1 || height<1) return;
-    for(int i=0; i<height;i++)
-    {
-        for(int j=0; j<width; j++)
-        {
-            map_dest[i][j] = map_src[i][j];
-        }
-    }
-
-}
-void game_init( struct player *player)
-{
-        player->connectionStatus = NotConnected;
-        player->PID= NotConnected;
-        player->brought_coins=0;
-        player->carried_coins=0;
-        player->deaths=0;
-}
-void send_map_to_player(struct player *player, char **map)
-{
-    int x,y;
-    x= player->coordinates.x;
-    y= player->coordinates.y;
-
-    for(int i=0; i<5; i++)
-    {
-        for(int j=0; j<5; j++)
-            player->map[i][j] = '|';
-    }
-    int y1= -2;
-    for(int i=0; i<5; i++)
-    {   int x1=-2;
-        for(int j=0; j<5; j++)
-        {
-            if(y+y1>=0 && y+y1<NUMBER_OF_ROWS && x+x1>=0 && x+x1<NUMBER_OF_COLS)
-                player->map[i][j] = map[y+y1][x+x1];
-            x1++;
-        }
-        y1++;
-    }
-    player->map[2][2] = 'p';
-}
-
-
-void take_coins(struct player *player,char **map_base)
-{
-    int x = player->coordinates.x;
-    int y = player->coordinates.y;
-    if(map_base[y][x] == 'c')
-    {
-        map_base[y][x] = ' ';
-        player->carried_coins +=COIN;
-    }
-    if(map_base[y][x] == 't')
-    {
-        map_base[y][x] = ' ';
-        player->carried_coins +=TREASURE;
-    }
-    if(map_base[y][x] == 'T')
-    {
-        map_base[y][x] = ' ';
-        player->carried_coins +=LARGE_TREASURE;
-    }
-}
-void slowdown_player(struct player *player, char **map_base)
-{
-    int x = player->coordinates.x;
-    int y = player->coordinates.y;
-    if(map_base[y][x] == '#' && player->effect==Neutral)
-    {
-        player->effect = SlowDown;
-    }
-}
-void spawn_player(struct player *player)
-{
-    if(player==NULL) return;
-    switch (player->playerID) {
-        case 0:
-        {
-            player->coordinates.x = 9;
-            player->coordinates.y =1;
-            break;
-        }
-        case 1:
-        {
-            player->coordinates.x = 4;
-            player->coordinates.y =3;
-            break;
-        }
-        case 2:
-        {
-            player->coordinates.x = 17;
-            player->coordinates.y =21;
-            break;
-        }
-        case 3:
-        {
-            player->coordinates.x =27;
-            player->coordinates.y =17;
-            break;
-        }
-        default: return;
-    }
-}
-void kill_player(struct player *player)
-{
-    player->carried_coins =0;
-    player->effect = Neutral;
-    player->deaths +=1;
-    spawn_player(player);
-}
-void players_collision(struct player **players, int size, struct buffer *death_points)
-{
-
-    for(int i=0; i<size; i++)
-    {
-        int has_collision =0;
-        int x = players[i]->coordinates.x;
-        int y = players[i]->coordinates.y;
-
-        for (int j = 0; j < size; ++j) {
-            if(i!=j)
-            {
-                if(players[j]->connectionStatus == Connected)
+            switch (option) {
+                case  't':
                 {
-                    if(players[j]->coordinates.x == x && players[j]->coordinates.y == y)
-                    {
-                        add_point(death_points,x,y,players[j]->carried_coins);
-                        kill_player(players[j]);
-                        has_collision++;
-                    }
+                    *selected_option = ADD_TREASURE;
+                    break;
+                }
+                case 'T':
+                {
+                    *selected_option = ADD_LARGE_TREASURE;
+                    break;
+                }
+                case 'c':
+                {
+                    *selected_option = ADD_COIN;
+                    break;
+                }
+                case 'b':
+                {
+                    *selected_option = ADD_BEAST;
+                    break;
+                }
+                default:
+                {
+                    *selected_option = DO_NOTHING;
                 }
             }
         }
-        if(has_collision)
-        {
-            add_point(death_points,x,y,players[i]->carried_coins);
-            kill_player(players[i]);
-        }
+
     }
-
-
+    return NULL;
 }
-
-
-void add_death_points_to_map(struct buffer *death_points, char **map)
+void unlock_player_move(struct player *player)
 {
-    for (int i = 0; i < death_points->size; ++i) {
-        if(death_points->array[i]==NULL) break;
-
-        int x = death_points->array[i]->x;
-        int y = death_points->array[i]->y;
-        map[y][x] = 'D';
-    }
+        player->player_moved = NotMoved;
 }
-void take_death_point(struct player *player,struct buffer *death_points)
+void try_to_unlink_everything(char **sem_names, int size_sem, char **shm_names_read, char **shm_names_write, int size_sh)
 {
-    if(player==NULL || death_points==NULL) return;
-    int x = player->coordinates.x;
-    int y = player->coordinates.y;
-    struct death_point* point = find_obj(death_points, x,y);
-    if(point!=NULL)
+    for(int i=0; i<size_sh; i++)
     {
-        player->carried_coins += point->stored_value;
-        remove_point(death_points,x,y);
+        shm_unlink(shm_names_read[i]);
+        shm_unlink(shm_names_write[i]);
     }
+    for(int i=0; i<size_sem; i++)
+    {
+        sem_unlink(sem_names[i]);
+    }
+
+    shm_unlink("players_list");
+    sem_unlink("my_sem");
 
 }
-void add_beast_to_map(struct beast_buffer *beasts, char **map)
-{
-    for (int i = 0; i < beasts->size; ++i) {
-        if(beasts->array[i]==NULL) break;
-
-        int x = beasts->array[i]->x;
-        int y = beasts->array[i]->y;
-        map[y][x] = '*';
-    }
-}
-
-
-
-void update_beast_view(struct beast *beast, int end_c, int end_row, int minus)
-{
-    for(int i=end_row-minus; i<end_row; i++)
-    {
-        for(int j=end_c- minus; j<end_c; j++)
-            beast->map[i][j] = '|';
-    }
-}
-void update_beast_map(struct beast *beast, char **map)
-{
-    int x,y;
-    x= beast->x;
-    y= beast->y;
-
-    for(int i=0; i<5; i++)
-    {
-        for(int j=0; j<5; j++)
-            beast->map[i][j] = '|';
-    }
-    int y1= -2;
-    for(int i=0; i<5; i++)
-    {   int x1=-2;
-        for(int j=0; j<5; j++)
-        {
-            if(y+y1>=0 && y+y1<NUMBER_OF_ROWS && x+x1>=0 && x+x1<NUMBER_OF_COLS)
-                beast->map[i][j] = map[y+y1][x+x1];
-            x1++;
-        }
-        y1++;
-    }
-
-    if(beast->map[2][2] == ' ')
-    {
-        beast->map[2][2] = '*';
-    }
-
-
-    // todo możliwe błędy
-
-    if(beast->map[1][1]!=' ')
-        update_beast_view(beast,2,2,2);
-    if(beast->map[1][3]!=' ')
-        update_beast_view(beast,5,2,2);
-
-    if(beast->map[3][1]!=' ')
-        update_beast_view(beast,3,5,2);
-    if(beast->map[3][3]!=' ')
-        update_beast_view(beast,5,5,2);
-
-}
-void add_beast_to_buffer(struct beast_buffer *beasts, char **map)
-{
-    if(beasts==NULL || map==NULL) return;
-
-
-    // Todo poprawic to xD
-    int x=7,y=1;
-    /*
-    while (map[y][x]!=' ')
-    {
-        x=rand() % (NUMBER_OF_COLS-1) + 1;
-        y=rand() % (NUMBER_OF_ROWS-1) + 1;
-    }
-     */
-    add_beast(beasts,x,y);
-    struct beast *beast = find_beast(beasts,x,y);
-    if(beast!=NULL)
-    {
-        update_beast_map(beast,map);
-    }
-}
-int beast_can_see_player(struct beast *beast)
-{
-
-    if(beast == NULL) return -1;
-    for(int i=0; i<5; i++)
-    {
-        for(int j=0; j<5; j++)
-        {
-            if(beast->map[i][j] >= '1' && beast->map[i][j] <= '9') return 1;
-        }
-    }
-    return 0;
-
-}
-
-enum MoveOptions where_is_player(struct beast *beast)
-{
-
-    int x=-1;
-    int y= -1;
-    for(int i=0; i<5; i++)
-    {
-        for(int j=0; j<5; j++)
-        {
-            if(beast->map[i][j] >= '1' && beast->map[i][j] <= '9')
-            {
-                x= j;
-                y= i;
-                break;
-            }
-        }
-    }
-
-    if(x== -1 || y==-1) return STAY;
-
-    // tutaj 2 jest tylko dlatego ze bestia na swojej mapie znajduje sie na srodku w pozycji x=2 y=2
-    // rozpatrywany jest lokalny układ współrzędnych
-    if(2>x) return LEFT;
-    if(2<y) return DOWN;
-    if(2<x) return RIGHT;
-    if(2>y) return UP;
-
-    return STAY;
-}
-void move_beast(struct beast *beast, char **map)
-{
-    if(beast==NULL || map==NULL) return;
-
-    beast->moveOption = RANDOM;
-    //todo change beast_mode
-    if(beast_can_see_player(beast) == 1)
-    {
-        beast->moveOption = CHASE_PLAYER;
-    }
-    int x,y;
-    x=beast->x;
-    y=beast->y;
-    enum MoveOptions dir = rand() %4;
-
-    if(beast->moveOption == CHASE_PLAYER)
-        dir = where_is_player(beast);
-    switch (dir) {
-        case UP:
-        {
-            if(map[y-1][x] != '|')
-                beast->y--;
-            break;
-        }
-        case DOWN:
-        {
-            if(map[y+1][x] != '|')
-                beast->y++;
-            break;
-        }
-        case RIGHT:
-        {
-            if(map[y][x+1] != '|')
-                beast->x++;
-            break;
-        }
-        case LEFT:
-        {
-            if(map[y][x-1] != '|')
-                beast->x--;
-            break;
-        }
-        default:break;
-    }
-
-}
-void beast_kill_player(struct player **players,int size, struct beast *beast,struct buffer *death_points)
-{
-    for(int i=0; i<size; i++)
-    {
-        int x = players[i]->coordinates.x;
-        int y = players[i]->coordinates.y;
-        if(beast->x == x && beast->y == y)
-        {
-            add_point(death_points,x,y,players[i]->carried_coins);
-            kill_player(players[i]);
-        }
-    }
-}
-void player_visit_camp(struct player *player, char ** basic_map)
-{
-    if(player == NULL || basic_map ==NULL) return;
-    int x = player->coordinates.x;
-    int y = player->coordinates.y;
-
-    if(basic_map[y][x] == 'A')
-    {
-        player->brought_coins += player->carried_coins;
-        player->carried_coins = 0;
-    }
-}
-
-
-
 
 int main()
 {
-
-
     char *sem_names[4];
     sem_names[0] = "sem1";
     sem_names[1] = "sem2";
     sem_names[2] = "sem3";
     sem_names[3] = "sem4";
 
-    char *shm_names[4];
-    shm_names[0] = "player1";
-    shm_names[1] = "player2";
-    shm_names[2] = "player3";
-    shm_names[3] = "player4";
+
+    char *shm_names_read[4];
+    shm_names_read[0] = "player1_read";
+    shm_names_read[1] = "player2_read";
+    shm_names_read[2] = "player3_read";
+    shm_names_read[3] = "player4_read";
+
+
+    char *shm_names_write[4];
+    shm_names_write[0] = "player1_write";
+    shm_names_write[1] = "player2_write";
+    shm_names_write[2] = "player3_write";
+    shm_names_write[3] = "player4_write";
+
+
+    //todo poprawic
+    try_to_unlink_everything(sem_names,4,shm_names_read,shm_names_write,4);
+
 
     // new named sem
     sem_t *sem = sem_open("my_sem", O_CREAT | O_EXCL, 0777,1 );
@@ -602,27 +348,34 @@ int main()
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
         names[i].slots->status = NotConnected;
-        strcpy( names->slots[i].player_name, shm_names[i]);
+        strcpy( names->slots[i].read_data, shm_names_read[i]);
+        strcpy( names->slots[i].write_data, shm_names_write[i]);
         strcpy( names->slots[i].sem_name, sem_names[i]);
     }
     sem_post(sem);
 
 
-
-    int shm_player[PLAYERS_LIMIT_TOTAL];
+    //todo pamieci wspoldzelone
     struct player *players[PLAYERS_LIMIT_TOTAL];
+    struct server_read_data *player_read[PLAYERS_LIMIT_TOTAL]; // pamiec ktora server wysyla
+    struct server_write_data *player_write[PLAYERS_LIMIT_TOTAL]; // pamiec ktora server odbiera
 
+    int shm_player_read[PLAYERS_LIMIT_TOTAL];
+    int shm_player_write[PLAYERS_LIMIT_TOTAL];
     sem_wait(sem);
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
-        shm_player[i] = shm_open(shm_names[i], O_CREAT | O_EXCL | O_RDWR,0777);
+        shm_player_read[i] = shm_open(shm_names_read[i], O_CREAT | O_EXCL | O_RDWR,0777);
         // todo check if fail
-        if(shm_player[i] == -1)
+        if(shm_player_read[i] == -1)
         {
             printf("Failed to create players shared memory\n");
             for (int j = 0; j < i; ++j) {
-                close(shm_player[j]);
-                shm_unlink(shm_names[j]);
+
+                close(shm_player_read[j]);
+                close(shm_player_write[j]);
+                shm_unlink(shm_names_read[j]);
+                shm_unlink(shm_names_write[j]);
             }
             munmap(names,sizeof(struct shared_memory_names));
             close(shm_all_process);
@@ -631,15 +384,55 @@ int main()
             sem_unlink("my_sem");
             return -5;
         }
+
+        shm_player_write[i] = shm_open(shm_names_write[i], O_CREAT | O_EXCL | O_RDWR,0777);
+        if(shm_player_write[i] == -1)
+        {
+            printf("Failed to create players shared memory\n");
+            for (int j = 0; j < i; ++j) {
+                close(shm_player_read[j]);
+                close(shm_player_write[j]);
+                shm_unlink(shm_names_read[j]);
+                shm_unlink(shm_names_write[j]);
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_player_read[i]);
+            shm_unlink(shm_names_read[i]);
+            close(shm_all_process);
+            shm_unlink("players_list");
+            sem_close(sem);
+            sem_unlink("my_sem");
+            return -5;
+        }
     }
+
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
-        if(ftruncate(shm_player[i], sizeof(struct player))!=0) // przypisanie pamięci
+        if(ftruncate(shm_player_read[i], sizeof(struct server_read_data))!=0) // przypisanie pamięci
         {
             printf("truncate struct players failed \n");
             for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-                    close(shm_player[j]);
-                    shm_unlink(shm_names[j]);
+                    close(shm_player_read[j]);
+                    close(shm_player_write[j]);
+                    shm_unlink(shm_names_read[j]);
+                    shm_unlink(shm_names_write[j]);
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_all_process);
+            shm_unlink("players_list");
+            sem_close(sem);
+            sem_unlink("my_sem");
+            return -6;
+        }
+
+        if(ftruncate(shm_player_write[i], sizeof(struct server_write_data))!=0)
+        {
+            printf("truncate struct players failed \n");
+            for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+                close(shm_player_read[j]);
+                close(shm_player_write[j]);
+                shm_unlink(shm_names_read[j]);
+                shm_unlink(shm_names_write[j]);
             }
             munmap(names,sizeof(struct shared_memory_names));
             close(shm_all_process);
@@ -649,17 +442,22 @@ int main()
             return -6;
         }
     }
+
     for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
     {
-         players[i] =mmap(NULL, sizeof(struct player), PROT_READ | PROT_WRITE, MAP_SHARED,shm_player[i],0);
-         if(players[i] == MAP_FAILED)
+         player_read[i] =mmap(NULL, sizeof(struct server_read_data), PROT_READ | PROT_WRITE, MAP_SHARED,shm_player_read[i],0);
+         if(player_read[i] == MAP_FAILED)
          {
              printf("mmpa players failed\n");
              for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-                 close(shm_player[j]);
-                 shm_unlink(shm_names[j]);
+                 close(shm_player_read[j]);
+                 close(shm_player_write[j]);
+                 shm_unlink(shm_names_read[j]);
+                 shm_unlink(shm_names_write[j]);
                  if(j<i)
-                     munmap(players[j],sizeof(struct player));
+                 {
+                     munmap(player_read[j],sizeof(struct server_read_data));
+                 }
              }
              munmap(names,sizeof(struct shared_memory_names));
              close(shm_all_process);
@@ -669,25 +467,56 @@ int main()
              return -7;
          }
     }
+
+
+    for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
+    {
+        player_write[i] =mmap(NULL, sizeof(struct server_write_data ), PROT_READ | PROT_WRITE, MAP_SHARED,shm_player_write[i],0);
+        if(player_write[i] == MAP_FAILED)
+        {
+            printf("mmpa players failed\n");
+            for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+                close(shm_player_read[j]);
+                close(shm_player_write[j]);
+                shm_unlink(shm_names_read[j]);
+                shm_unlink(shm_names_write[j]);
+                if(j<i) {
+                    munmap(player_write[j],sizeof(struct server_write_data));
+                }
+            }
+
+            for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j)
+            {
+                munmap(player_read[j],sizeof(struct server_read_data));
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_all_process);
+            shm_unlink("players_list");
+            sem_close(sem);
+            sem_unlink("my_sem");
+            return -7;
+        }
+    }
     sem_post(sem);
-
-
 
 
     // todo make 4 sems for players - unused
     // if used check if sems are closed and unlinked
     // by default psems are free and unlkend so we must delete it when we decide to delete next line
     sem_t *psems[PLAYERS_LIMIT_TOTAL];
-
     for (int i = 0; i < PLAYERS_LIMIT_TOTAL; ++i) {
         psems[i]=  sem_open(sem_names[i], O_CREAT | O_EXCL, 0777,1 );
         if(psems[i] == SEM_FAILED)
         {
             printf("open sems for players failed\n");
             for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-                close(shm_player[j]);
-                shm_unlink(shm_names[j]);
-                munmap(players[j],sizeof(struct player));
+                close(shm_player_read[j]);
+                close(shm_player_write[j]);
+                shm_unlink(shm_names_read[j]);
+                shm_unlink(shm_names_write[j]);
+
+                munmap(player_write[j],sizeof(struct server_write_data));
+                munmap(player_read[j],sizeof(struct server_read_data));
                 if(j<i)
                 {
                     sem_close(psems[j]);
@@ -708,14 +537,18 @@ int main()
     char **map_interactive;
 
     //todo free memory
-    struct buffer *death_points = create_buffer(25);
+    struct buffer *death_points = create_buffer(MAX_NUMBER_OF_DEATH_POINTS);
     if(death_points == NULL)
     {
         printf("create death_points failed\n");
         for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-            close(shm_player[j]);
-            shm_unlink(shm_names[j]);
-            munmap(players[j],sizeof(struct player));
+            close(shm_player_read[j]);
+            close(shm_player_write[j]);
+            shm_unlink(shm_names_read[j]);
+            shm_unlink(shm_names_write[j]);
+
+            munmap(player_write[j],sizeof(struct server_write_data));
+            munmap(player_read[j],sizeof(struct server_read_data));
             sem_close(psems[j]);
             sem_unlink(sem_names[j]);
 
@@ -728,16 +561,21 @@ int main()
         return -9;
     }
 
-    struct beast_buffer *beasts = create_beast_buffer(25);
+    struct beast_buffer *beasts = create_beast_buffer(MAX_NUMBER_OF_BEASTS);
     if(beasts == NULL)
     {
 
         printf("create beasts_buffer failed\n");
         free_buffer(&death_points);
         for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-            close(shm_player[j]);
-            shm_unlink(shm_names[j]);
-            munmap(players[j],sizeof(struct player));
+            close(shm_player_read[j]);
+            close(shm_player_write[j]);
+            shm_unlink(shm_names_read[j]);
+            shm_unlink(shm_names_write[j]);
+
+            munmap(player_write[j],sizeof(struct server_write_data));
+            munmap(player_read[j],sizeof(struct server_read_data));
+
             sem_close(psems[j]);
             sem_unlink(sem_names[j]);
 
@@ -751,6 +589,8 @@ int main()
     }
     //game init
 
+
+    //todo inicjalizacja bestii jako watek
     sem_wait(sem);
     if(create_array_2d_2(&map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS)!=0)
     {
@@ -758,9 +598,13 @@ int main()
         free_beast_buffer(&beasts);
         free_buffer(&death_points);
         for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-            close(shm_player[j]);
-            shm_unlink(shm_names[j]);
-            munmap(players[j],sizeof(struct player));
+            close(shm_player_read[j]);
+            close(shm_player_write[j]);
+            shm_unlink(shm_names_read[j]);
+            shm_unlink(shm_names_write[j]);
+
+            munmap(player_write[j],sizeof(struct server_write_data));
+            munmap(player_read[j],sizeof(struct server_read_data));
             sem_close(psems[j]);
             sem_unlink(sem_names[j]);
 
@@ -772,7 +616,6 @@ int main()
         sem_unlink("my_sem");
         return -11;
     }// create map
-
     if(create_array_2d_2(&map_interactive, NUMBER_OF_COLS,NUMBER_OF_ROWS)!=0)
     {
         printf("create map failed\n");
@@ -780,9 +623,13 @@ int main()
         free_beast_buffer(&beasts);
         free_buffer(&death_points);
         for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-            close(shm_player[j]);
-            shm_unlink(shm_names[j]);
-            munmap(players[j],sizeof(struct player));
+            close(shm_player_read[j]);
+            close(shm_player_write[j]);
+            shm_unlink(shm_names_read[j]);
+            shm_unlink(shm_names_write[j]);
+
+            munmap(player_write[j],sizeof(struct server_write_data));
+            munmap(player_read[j],sizeof(struct server_read_data));
             sem_close(psems[j]);
             sem_unlink(sem_names[j]);
 
@@ -797,54 +644,173 @@ int main()
 
     load_map(map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS);          // load map
     load_map(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
+
+
+    for(int i=0; i<PLAYERS_LIMIT_TOTAL ;i++)
+    {
+        players[i] = calloc(1, sizeof(struct player));
+        if(players[i]==NULL)
+        {
+            printf("can't allocate player memory\n");
+            for(int j=0; j<i; j++)
+            {
+                free(players[j]);
+            }
+            destroy_array_2d(&map_interactive, NUMBER_OF_ROWS);
+            destroy_array_2d(&map_base,NUMBER_OF_ROWS);
+            free_beast_buffer(&beasts);
+            free_buffer(&death_points);
+            for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
+                close(shm_player_read[j]);
+                close(shm_player_write[j]);
+                shm_unlink(shm_names_read[j]);
+                shm_unlink(shm_names_write[j]);
+
+                munmap(player_write[j],sizeof(struct server_write_data));
+                munmap(player_read[j],sizeof(struct server_read_data));
+                sem_close(psems[j]);
+                sem_unlink(sem_names[j]);
+            }
+            munmap(names,sizeof(struct shared_memory_names));
+            close(shm_all_process);
+            shm_unlink("players_list");
+            sem_close(sem);
+            sem_unlink("my_sem");
+
+            return 15;
+
+
+
+        }
+    }
     for (int i = 0; i < PLAYERS_LIMIT_TOTAL; ++i) {
         game_init(players[i]);
+        players[i]->playerID = i;
+    }
+
+    pthread_t beast_thread[MAX_NUMBER_OF_BEASTS];
+    struct thread_task task[MAX_NUMBER_OF_BEASTS];
+    for(int i=0; i<MAX_NUMBER_OF_BEASTS; i++)
+    {
+        task[i].map = map_interactive;
+        task[i].beast = beasts->array[i];
     }
     sem_post(sem);
 
 
 
+
  // todo init screen
-   // initscr();
-    int counter = 10;
-    int Number_of_players = 0;
+    initscr();
+    cbreak();
+    noecho();
 
-    for(int i=0; i<5; i++)
-    add_beast_to_buffer(beasts,map_interactive);
-    while ( counter>0 || Number_of_players!=0)
+    int HEIGHT = 5;
+    int WIDTH = 15;
+    WINDOW  *game_window  = newwin(HEIGHT,WIDTH,0,0);
+    keypad(game_window,true);
+    box(game_window, 0, 0);
+
+    int Number_of_players;
+
+
+    pthread_t listener;
+    enum keyboard_option selected_option = DO_NOTHING;
+    pthread_create(&listener,NULL,keyborad_listener, (void *) &selected_option);
+
+    for(int i=0; i<Current_Number_of_beasts; i++)
     {
+        add_beast_to_buffer(beasts,map_interactive);
+        task[beasts->current_size-1].beast = beasts->array[beasts->current_size-1];
+        task[beasts->current_size-1].option = &selected_option;
+    }
+    printf("ilosc beastii: %d\n", beasts->current_size);
 
 
+    Current_Number_of_beasts = beasts->current_size;
+    for(int i=0; i<Current_Number_of_beasts; i++)
+    {
+        if(pthread_create(&beast_thread[i],NULL,move_beast_thread, (void *) &task[i])!=0)
+            printf("Error\n");
+    }
 
+
+    unsigned  long long round = 0;
+    sem_t sem_beast;
+    sem_init(&sem_beast,0,1);
+
+    while ( selected_option!=QUIT_GAME)
+    {
+        switch (selected_option) {
+            case ADD_COIN:
+            {
+                add_object(map_base,COIN);
+                selected_option = DO_NOTHING;
+                break;
+            }
+            case ADD_TREASURE:
+            {
+                add_object(map_base,TREASURE);
+                selected_option = DO_NOTHING;
+                break;
+            }
+            case ADD_LARGE_TREASURE:
+            {
+                add_object(map_base,LARGE_TREASURE);
+                selected_option = DO_NOTHING;
+                break;
+            }
+            case ADD_BEAST:
+            {
+                //todo dodawac nowy watek
+                add_beast_to_buffer(beasts,map_interactive);
+                task[beasts->current_size-1].beast = beasts->array[beasts->current_size-1];
+                task[beasts->current_size-1].option = &selected_option;
+                selected_option = DO_NOTHING;
+                if(pthread_create(&beast_thread[beasts->current_size-1],NULL,move_beast_thread, (void *) &task[beasts->current_size-1])!=0)
+                    printf("Error\n");
+
+                Current_Number_of_beasts = beasts->current_size;
+                break;
+            }
+            default:
+                selected_option = DO_NOTHING;
+        }
         Number_of_players = 0;
         sem_wait(sem);
         map_copy(map_interactive,map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS);
-        for(int i=0; i<1; i++)
-            move_beast(beasts->array[i],map_interactive);
         sem_post(sem);
 
 
+        for (int i = 0; i <4 ; ++i)
+            sem_wait(psems[i]);
 
         for (int i = 0; i <4 ; ++i) {
-            sem_wait(psems[i]);
-            if(players[i]->connectionStatus == Connected)
+            if(player_write[i]->status == Connected)
+            {
+                players[i]->player_move = player_write[i]->move;
+                player_write[i]->move = STAY;
+                move_player(players[i]);
+            }
+        }
+        for (int i = 0; i <4 ; ++i) {
+            if(player_write[i]->status == Connected)
             {
                 Number_of_players++;
                 int x,y;
+                for(int j=0; j<Current_Number_of_beasts; j++)
+                    beast_kill_player(players,Number_of_players,beasts->array[j],death_points);
 
-                beast_kill_player(players,Number_of_players,beasts->array[0],death_points);
                 player_visit_camp(players[i],map_base);
                 take_coins(players[i],map_base);
                 take_death_point(players[i],death_points);
                 slowdown_player(players[i],map_base);
+
                 players_collision(players,PLAYERS_LIMIT_TOTAL,death_points);
                 x= players[i]->coordinates.x;
                 y= players[i]->coordinates.y;
-
                 add_death_points_to_map(death_points,map_interactive);
-                add_beast_to_map(beasts,map_interactive);
                 send_map_to_player(players[i],map_interactive);
-
 
                 switch (i) {
                     case 0:
@@ -871,32 +837,84 @@ int main()
                     default: break;
                 }
             }
+            sem_wait(sem);
+            if(players[i]->connectionStatus == NotConnected && player_write[i]->status== WaitingForData)
+            {
+                player_write[i]->status = Connected;
+                spawn_player(players[i]);
 
-            sem_post(psems[i]);
+                player_read[i]->coordinates = players[i]->coordinates;
+                player_read[i]->brought_coins = 0;
+                player_read[i]->carried_coins = 0;
+                player_read[i]->deaths =0;
+                player_read[i]->playerID = players[i]->playerID;
+                player_read[i]->round_number = round;
+                player_read[i]->serverPID =getpid();
+
+                players[i]->PID = player_write[i]->playerPID;
+                players[i]->connectionStatus = Connected;
+            }
+
+            if(players[i]->connectionStatus == Connected && player_write[i]->status == NotConnected)
+            {
+                players[i]->connectionStatus = NotConnected;
+            }
+            sem_post(sem);
         }
-        for(int i=0; i<1; i++)
+
+
+        for (int i = 0; i <4 ; ++i)
+            sem_post(psems[i]);
+
+
+        sem_wait(&sem_beast);
+        add_beasts_to_map(beasts,map_interactive);
+        for(int i=0; i<beasts->current_size; i++)
             update_beast_map(beasts->array[i],map_interactive);
 
-       // print_window(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
-       // refresh();
 
 
-        counter--;
+        sem_wait(sem);
+        print_window(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
+        print_server_info(getpid(), find_camp(map_base),NUMBER_OF_COLS + 7, 5);
+        print_stats(players,4,round,NUMBER_OF_COLS + 7, 5);
+        refresh();
+        for (int i = 0; i < Current_Number_of_beasts; ++i) {
+            task[i].beast->beast_moved =0;
+        }
+        sem_post(&sem_beast);
+        round++;
+        for(int i=0; i<4; i++)
+        {
+            if(players[i]->connectionStatus == Connected)
+            {
+                unlock_player_move(players[i]);
+            }
+        }
+        sem_post(sem);
         sleep(1);
     }
-   // endwin();
+    endwin();
 
 
+    printf("clearing data\n");
 
-
+    for(int j=0; j<PLAYERS_LIMIT_TOTAL; j++)
+    {
+        free(players[j]);
+    }
     destroy_array_2d(&map_interactive, NUMBER_OF_ROWS);
     destroy_array_2d(&map_base,NUMBER_OF_ROWS);
     free_beast_buffer(&beasts);
     free_buffer(&death_points);
     for (int j = 0; j < PLAYERS_LIMIT_TOTAL; ++j) {
-        close(shm_player[j]);
-        shm_unlink(shm_names[j]);
-        munmap(players[j],sizeof(struct player));
+        close(shm_player_read[j]);
+        close(shm_player_write[j]);
+        shm_unlink(shm_names_read[j]);
+        shm_unlink(shm_names_write[j]);
+
+        munmap(player_write[j],sizeof(struct server_write_data));
+        munmap(player_read[j],sizeof(struct server_read_data));
         sem_close(psems[j]);
         sem_unlink(sem_names[j]);
     }
@@ -905,6 +923,8 @@ int main()
     shm_unlink("players_list");
     sem_close(sem);
     sem_unlink("my_sem");
+
+    printf("Server finished \n");
     return 0;
 
 }
