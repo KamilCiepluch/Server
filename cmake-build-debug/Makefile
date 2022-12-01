@@ -200,6 +200,30 @@ create_array.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Server_2.dir\build.make CMakeFiles/Server_2.dir/create_array.c.s
 .PHONY : create_array.c.s
 
+game_logic.obj: game_logic.c.obj
+.PHONY : game_logic.obj
+
+# target to build an object file
+game_logic.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Server_2.dir\build.make CMakeFiles/Server_2.dir/game_logic.c.obj
+.PHONY : game_logic.c.obj
+
+game_logic.i: game_logic.c.i
+.PHONY : game_logic.i
+
+# target to preprocess a source file
+game_logic.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Server_2.dir\build.make CMakeFiles/Server_2.dir/game_logic.c.i
+.PHONY : game_logic.c.i
+
+game_logic.s: game_logic.c.s
+.PHONY : game_logic.s
+
+# target to generate assembly for a file
+game_logic.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Server_2.dir\build.make CMakeFiles/Server_2.dir/game_logic.c.s
+.PHONY : game_logic.c.s
+
 main.obj: main.c.obj
 .PHONY : main.obj
 
@@ -242,6 +266,9 @@ help:
 	@echo ... create_array.obj
 	@echo ... create_array.i
 	@echo ... create_array.s
+	@echo ... game_logic.obj
+	@echo ... game_logic.i
+	@echo ... game_logic.s
 	@echo ... main.obj
 	@echo ... main.i
 	@echo ... main.s

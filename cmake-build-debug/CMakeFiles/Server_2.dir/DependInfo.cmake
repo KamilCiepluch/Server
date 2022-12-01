@@ -11,6 +11,7 @@ set(CMAKE_DEPENDS_CHECK_C
   "C:/Users/Kamil/Desktop/Server_git/beast.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/beast.c.obj"
   "C:/Users/Kamil/Desktop/Server_git/buffer.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/buffer.c.obj"
   "C:/Users/Kamil/Desktop/Server_git/create_array.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/create_array.c.obj"
+  "C:/Users/Kamil/Desktop/Server_git/game_logic.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/game_logic.c.obj"
   "C:/Users/Kamil/Desktop/Server_git/main.c" "C:/Users/Kamil/Desktop/Server_git/cmake-build-debug/CMakeFiles/Server_2.dir/main.c.obj"
   )
 set(CMAKE_C_COMPILER_ID "GNU")

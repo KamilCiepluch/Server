@@ -92,6 +92,15 @@
 		<Unit filename="C:/Users/Kamil/Desktop/Server_git/create_array.h">
 			<Option target="Server_2"/>
 		</Unit>
+		<Unit filename="C:/Users/Kamil/Desktop/Server_git/game_enums.h">
+			<Option target="Server_2"/>
+		</Unit>
+		<Unit filename="C:/Users/Kamil/Desktop/Server_git/game_logic.c">
+			<Option target="Server_2"/>
+		</Unit>
+		<Unit filename="C:/Users/Kamil/Desktop/Server_git/game_logic.h">
+			<Option target="Server_2"/>
+		</Unit>
 		<Unit filename="C:/Users/Kamil/Desktop/Server_git/main.c">
 			<Option target="Server_2"/>
 		</Unit>

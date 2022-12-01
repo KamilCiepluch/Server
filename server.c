@@ -19,14 +19,9 @@
 int PLAYERS_LIMIT_TOTAL = 4;
 int Current_Number_of_beasts  = 5;
 
-
-
-
-
 void print_window(char **tab, int number_of_cols, int number_of_rows)
 {
     int x=5,y=5;
-
     start_color();
     init_pair(1,COLOR_RED,COLOR_RED);
     init_pair(2,COLOR_BLACK,COLOR_YELLOW);
@@ -109,19 +104,22 @@ void print_players_info(struct player **players, int number_of_players, int star
 {
     int x = 0;
     start_color();
-    attron(COLOR_PAIR(8));
+    init_pair(8,COLOR_BLACK,COLOR_WHITE);
+
     char number = '1';
     for(int i=0; i<number_of_players; i++)
     {
         if(players[i]->connectionStatus == Connected)
         {
+            attron(COLOR_PAIR(8));
             mvprintw(start_y,start_x+x, "%s%c", "Player",number);
+            attroff(COLOR_PAIR(8));
             print_player_info(players[i],start_x +x , start_y);
         }
         x += 10;
         number++;
     }
-    attroff(COLOR_PAIR(8));
+
 }
 void print_server_info(pid_t PID, struct coordinates camp,int start_x, int start_y)
 {
@@ -167,8 +165,6 @@ void print_stats(struct player **players, int number_of_players, unsigned long l
     mvprintw(start_y+15,start_x+5,"brought");
 
 
-
-
     mvprintw(start_y+18,start_x+1,"Legend:");
     mvprintw(start_y+19,start_x+7,"- players");
     mvprintw(start_y+20,start_x+7,"- wall");
@@ -210,6 +206,7 @@ void print_stats(struct player **players, int number_of_players, unsigned long l
     mvprintw(start_y+22,start_x+29,"A");
     attroff(COLOR_PAIR(13));
     print_players_info(players,number_of_players,start_x+14,start_y+6);
+    move(0,0);
 }
 void *keyborad_listener(void *arg)
 {
@@ -273,6 +270,41 @@ void try_to_unlink_everything(char **sem_names, int size_sem, char **shm_names_r
 
     shm_unlink("players_list");
     sem_unlink("my_sem");
+
+}
+void init_player(struct player *player)
+{
+    if(player == NULL) return;
+    player->connectionStatus = NotConnected;
+    player->PID = 0;
+    player->coordinates.x =0;
+    player->coordinates.y =0;
+    player->deaths =0;
+    player->carried_coins =0;
+    player->brought_coins =0;
+    player->effect = Neutral;
+    player->player_moved = NotMoved;
+    player->player_move = STAY;
+    strcpy(player->player_type, "HUMAN");
+}
+void kill_zombie(struct shared_memory_names *names,struct player **players,struct server_read_data **player_read,struct server_write_data **player_write,  int index)
+{
+    names->slots[index].status = NotConnected;
+    init_player(players[index]);
+    player_read[index]->serverPID = 0;
+    player_read[index]->connectionStatus = NotConnected;
+    player_read[index]->round_number = 0;
+    player_read[index]->playerID = 0;
+    player_read[index]->coordinates.x = 0;
+    player_read[index]->coordinates.y = 0;
+    player_read[index]->deaths = 0;
+    player_read[index]->carried_coins = 0;
+    player_read[index]->brought_coins = 0;
+
+    player_write[index]->playerPID = 0;
+    player_write[index]->move = STAY;
+    player_write[index]->status = NotConnected;
+    player_write[index]->rounds_to_exit = 0;
 
 }
 
@@ -739,8 +771,8 @@ int main()
     sem_t sem_beast;
     sem_init(&sem_beast,0,1);
 
-    while ( selected_option!=QUIT_GAME)
-    {
+    while ( selected_option!=QUIT_GAME) {
+
         switch (selected_option) {
             case ADD_COIN:
             {
@@ -779,9 +811,16 @@ int main()
         Number_of_players = 0;
         sem_wait(sem);
         map_copy(map_interactive,map_base,NUMBER_OF_COLS,NUMBER_OF_ROWS);
+        add_beasts_to_map(beasts,map_interactive);
         sem_post(sem);
 
-
+        sem_wait(sem);
+        for(int i=0; i<PLAYERS_LIMIT_TOTAL; i++)
+        {
+            if(player_write[i]->rounds_to_exit ==0)
+                kill_zombie(names,players,player_read,player_write,i);
+        }
+        sem_post(sem);
         for (int i = 0; i <4 ; ++i)
             sem_wait(psems[i]);
 
@@ -810,7 +849,9 @@ int main()
                 x= players[i]->coordinates.x;
                 y= players[i]->coordinates.y;
                 add_death_points_to_map(death_points,map_interactive);
-                send_map_to_player(players[i],map_interactive);
+
+                if(player_write[i]->rounds_to_exit>0)
+                    player_write[i]->rounds_to_exit--;
 
                 switch (i) {
                     case 0:
@@ -840,9 +881,12 @@ int main()
             sem_wait(sem);
             if(players[i]->connectionStatus == NotConnected && player_write[i]->status== WaitingForData)
             {
-                player_write[i]->status = Connected;
-                spawn_player(players[i]);
 
+                player_write[i]->status = Connected;
+                init_player(players[i]);
+                spawn_player(players[i]);
+                strcpy(players[i]->player_type, "HUMAN");
+                player_read[i]->connectionStatus = Connected;
                 player_read[i]->coordinates = players[i]->coordinates;
                 player_read[i]->brought_coins = 0;
                 player_read[i]->carried_coins = 0;
@@ -850,25 +894,30 @@ int main()
                 player_read[i]->playerID = players[i]->playerID;
                 player_read[i]->round_number = round;
                 player_read[i]->serverPID =getpid();
-
+                player_write[i]->rounds_to_exit = AFK_TIME;
+                memcpy(player_read[i]->map, players[i]->map, sizeof(players[i]->map));
                 players[i]->PID = player_write[i]->playerPID;
                 players[i]->connectionStatus = Connected;
+
             }
 
             if(players[i]->connectionStatus == Connected && player_write[i]->status == NotConnected)
             {
                 players[i]->connectionStatus = NotConnected;
             }
+
             sem_post(sem);
         }
 
 
         for (int i = 0; i <4 ; ++i)
+        {
+            send_map_to_player(players[i],map_interactive);
             sem_post(psems[i]);
+        }
 
 
         sem_wait(&sem_beast);
-        add_beasts_to_map(beasts,map_interactive);
         for(int i=0; i<beasts->current_size; i++)
             update_beast_map(beasts->array[i],map_interactive);
 
@@ -876,21 +925,28 @@ int main()
 
         sem_wait(sem);
         print_window(map_interactive,NUMBER_OF_COLS,NUMBER_OF_ROWS);
-        print_server_info(getpid(), find_camp(map_base),NUMBER_OF_COLS + 7, 5);
-        print_stats(players,4,round,NUMBER_OF_COLS + 7, 5);
+        print_server_info(getpid(), find_camp(map_base),NUMBER_OF_COLS + 7, 4);
+        print_stats(players,4,round,NUMBER_OF_COLS + 7, 4);
         refresh();
         for (int i = 0; i < Current_Number_of_beasts; ++i) {
             task[i].beast->beast_moved =0;
         }
-        sem_post(&sem_beast);
-        round++;
         for(int i=0; i<4; i++)
         {
             if(players[i]->connectionStatus == Connected)
             {
                 unlock_player_move(players[i]);
+                player_read[i]->round_number = round;
+                memcpy(player_read[i]->map, players[i]->map, sizeof(players[i]->map));
+                player_read[i]->brought_coins = players[i]->brought_coins;
+                player_read[i]->carried_coins = players[i]->carried_coins;
+                player_read[i]->deaths = players[i]->deaths;
+                player_read[i]->coordinates = players[i]->coordinates;
             }
         }
+        sem_post(&sem_beast);
+        round++;
+
         sem_post(sem);
         sleep(1);
     }
@@ -901,6 +957,10 @@ int main()
 
     for(int j=0; j<PLAYERS_LIMIT_TOTAL; j++)
     {
+        if(player_read[j]->connectionStatus !=NotConnected)
+        {
+            player_read[j]->connectionStatus = ServerQuit;
+        }
         free(players[j]);
     }
     destroy_array_2d(&map_interactive, NUMBER_OF_ROWS);
