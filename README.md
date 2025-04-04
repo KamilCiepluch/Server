@@ -1,34 +1,37 @@
-Wstęp
-W ramach projektu z komunikacji międzyprocesowej należy przygotować prostą grę planszową dla czterech niezależnych graczy, grających równolegle. Architekturę gry należy zaprojektować tak, aby gracze-procesy komunikowały się z serwerem-procesem. Zarówno gracze, jak i serwer mają być oddzielnymi procesami.
 
-Ponieważ graczem może być zarówno komputer jak i człowiek to sugerowane jest, aby całość składała się z trzech programów:
+# Server Application for a Simple Board Game
 
-serwera gry,
-klienta gracza,
-klienta bota.
+This is a server application for a simple board game written in C, compatible with Linux systems. It utilizes multi-threading and thread synchronization mechanisms, as well as shared memory for inter-process communication. The server allows up to four independent players to play the game concurrently as separate processes. Each player communicates with the server via shared memory. The server's role is to manage the game logic and control the actions of wild beasts, each running in its own thread.
 
-Specyfikacja gry
-Gracze (1, 2, 3, 4) zamknięci są w labiryncie i mają za zadanie zbierać pojawiające się skarby w postaci monet (c, t, T). Gracz, który zbierze wystarczająco dużo skarbów, zanosi je do obozowiska ( A ) i tam zostawia. Gracz może w danej chwili nosić dowolną liczbę monet (carried) ale może je stracić w wyniku ataku dzikiej bestii (*) lub poprzez zderzenie się z innym graczem.
+## Game Rules
 
-W przypadku ataku dzikiej bestii gracz ginie (deaths), a zebrany przez niego łup pozostaje w miejscu śmierci (D). Gracz respawnuje się w swoim punkcie startowym.
-W przypadku zderzenia z innym graczem łupy obu pozostają w miejscu zderzenia (D), a gracze respawnują się w swoich punktach startowych.
-Pozostawiony łup (D) ma swoją wartość. W przypadku zderzenia jest to suma noszonych monet obu graczy.
-Gracz pozbywa się swoich monet w obozowisku (A), gdzie zapisywane są one na jego konto (budget). Po zdaniu skarbu gracz kontynuuje poszukiwania, zaczynając od obozowiska.
+Players (1, 2, 3, 4) are located in a maze and must collect treasure in the form of coins (represented by `c`, `t`, `T`). To win, a player needs to collect enough coins and deliver them to a campsite (`A`), where they will be recorded. Players can carry any number of coins (`carried`), but there is a risk of losing the treasures due to a wild beast attack (`*`) or collision with other players.
 
-Typy graczy
-Należy przygotować dwa typy graczy: komputer – bot (CPU) oraz człowiek (HUMAN).
+- **Wild Beast Attack:** The player dies (`deaths`), and their treasures remain at the death location (`D`). The player respawns at their starting point after death.
+- **Collision with Another Player:** Both players' treasures are left at the collision site (`D`), and they respawn at their starting points. The value of the left loot is the sum of the coins carried by both players.
+- **Campsite (`A`):** Players drop their collected treasures at the campsite, and the coins are added to their budget (`budget`). After delivering the treasures, the player resumes searching, starting from the campsite.
 
-Postać gracza-bota porusza się autonomicznie na podstawie mapy przekazywanej przez serwer.
-Postać gracza-człowieka poruszana jest za pomocą klawiszy - strzałek (w górę, w dół, w lewo, w prawo).
-Gracz CPU może poruszać się z wykorzystaniem dowolnego algorytmu, np. chaotycznie, A* w dowolny punkt, A* z eksploracją, RL, lewa ściana, itp. Gracz CPU powinien również reagować na pojawienie się bestii, ratując się ucieczką.
+![alt text](server.png)
+## Player Types
 
+- **Bot (CPU):** An AI-controlled player that moves autonomously based on the map provided by the server.
+- **Human (HUMAN):** A human-controlled player that uses arrow keys (up, down, left, right) to move.
 
+## How to Run the Application
 
+To run the application, follow these steps:
 
+1. Configure the environment using CMake:
+   ```bash
+   cmake ..
+   ```
 
-Serwer oraz wszyscy czterej gracze muszą byś osobnymi procesami. Boty nie są wymagane.
-Bestie muszą być zaimplementowane jako oddzielne wątki na serwerze (1 bestia = 1 wątek).
-Kolejność uruchamiania procesów jest następująca:
-Proces serwera.
-Klienty graczy 1-4.
-W przypadku awarii/restartu serwera dopuszczalne jest wprowadzenie wymogu restartu klientów
+2. Build the application:
+   ```bash
+   make
+   ```
+
+3. Run the server:
+   ```bash
+   ./server
+   ```
