@@ -23,7 +23,7 @@ To run the application, follow these steps:
 
 1. Configure the environment using CMake:
    ```bash
-   cmake ..
+   cmake CMakeLists.txt
    ```
 
 2. Build the application:
